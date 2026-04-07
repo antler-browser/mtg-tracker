@@ -1,40 +1,69 @@
 @import "tailwindcss";
 
-/* =============================================================================
-   Theme Configuration (Tailwind v4 CSS-first approach)
-   ============================================================================= */
-
 @theme {
-  /* Brand colors */
-  --color-primary: #403B51;
-  --color-primary-hover: #322d40;
+  --color-background: #0A0A0F;
+  --color-surface: #12121A;
+  --color-surface-light: #1A1A25;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-light: rgba(255, 255, 255, 0.1);
 
-  /* Surface colors */
-  --color-card: white;
-  --color-background: white;
+  --color-accent-blue: #4FC3F7;
+  --color-accent-purple: #9C27B0;
+  --color-win: #66BB6A;
+  --color-loss: #EF5350;
+  --color-draw: #FFA726;
 
-  /* Gradient colors for page background */
-  --color-gradient-start: #faf5ff; /* purple-50 */
-  --color-gradient-end: #eff6ff;   /* blue-50 */
+  --color-text-primary: #EEEEF0;
+  --color-text-secondary: rgba(255, 255, 255, 0.4);
+  --color-text-muted: rgba(255, 255, 255, 0.25);
+  --color-text-dim: rgba(255, 255, 255, 0.08);
 
-  /* QR panel gradient */
-  --color-qr-gradient-start: #e0e7ff; /* indigo-100 */
-  --color-qr-gradient-end: #f3e8ff;   /* purple-100 */
+  --color-mana-W: #F9FAF4;
+  --color-mana-U: #4FC3F7;
+  --color-mana-B: #9C27B0;
+  --color-mana-R: #FF6B35;
+  --color-mana-G: #66BB6A;
+
+  --font-display: 'Cinzel', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
 
-/* =============================================================================
-   Component Patterns
-   ============================================================================= */
+html, body {
+  background-color: #0A0A0F;
+  color: #EEEEF0;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
 @layer components {
-  /* Primary button - brand color with hover effects */
-  .btn-primary {
-    @apply bg-primary text-white rounded-full shadow-lg
-           hover:bg-primary-hover transition-all hover:scale-105 font-semibold;
+  .btn-gradient {
+    @apply text-white font-bold rounded-[14px] transition-all;
+    background: linear-gradient(135deg, #4FC3F7, #9C27B0);
+    box-shadow: 0 4px 20px rgba(79, 195, 247, 0.3);
+  }
+  .btn-gradient:hover {
+    box-shadow: 0 4px 28px rgba(79, 195, 247, 0.45);
+    transform: scale(1.02);
   }
 
-  /* Card container */
-  .card {
-    @apply bg-card rounded-lg shadow-lg;
+  .card-surface {
+    @apply rounded-2xl;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .font-display {
+    font-family: 'Cinzel', serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
   }
 }

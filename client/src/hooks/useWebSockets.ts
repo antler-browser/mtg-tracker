@@ -4,9 +4,10 @@ interface UseWebSocketsOptions {
   userId: string | undefined
   isAdmin: boolean
   onReset?: () => void
+  onMatchLogged?: () => void
 }
 
-export function useWebSockets({ userId, isAdmin, onReset }: UseWebSocketsOptions) {
+export function useWebSockets({ userId, isAdmin, onReset, onMatchLogged }: UseWebSocketsOptions) {
   const [resetMessage, setResetMessage] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -27,6 +28,10 @@ export function useWebSockets({ userId, isAdmin, onReset }: UseWebSocketsOptions
           if (!isAdmin) {
             onReset?.()
           }
+        }
+
+        if (data.type === 'match-logged') {
+          onMatchLogged?.()
         }
       } catch (err) {
         console.error('WebSocket message error:', err)

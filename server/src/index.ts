@@ -12,6 +12,9 @@ import type { Env } from './types'
 import { Broadcaster } from './durable-object'
 import { createDb } from './db/client'
 import * as UserModel from './db/models/users'
+import * as DeckModel from './db/models/decks'
+import * as MatchModel from './db/models/matches'
+import * as StatsModel from './db/models/stats'
 import { decodeAndVerifyJWT } from '@starter/shared'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -220,6 +223,177 @@ async function notifyDO(c: Context<{ Bindings: Env }>, event: string, data: any)
     console.error('Error notifying Durable Object:', err)
   }
 }
+
+// ─── JWT from Authorization header (for GET endpoints) ─────────────
+
+async function getDidFromHeader(c: Context<{ Bindings: Env }>): Promise<string> {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('Missing authorization')
+  }
+  const payload = await decodeAndVerifyJWT(authHeader.slice(7))
+  return payload.iss
+}
+
+// ─── Deck Endpoints ────────────────────────────────────────────────
+
+app.get('/api/decks', async (c) => {
+  try {
+    const userDid = await getDidFromHeader(c)
+    const db = createDb(c.env.DB)
+    const userDecks = await DeckModel.getDecksByUser(db, userDid)
+
+    // Attach stats to each deck
+    const decksWithStats = await Promise.all(
+      userDecks.map(async (deck) => {
+        const stats = await StatsModel.getDeckStats(db, deck.id)
+        return { ...deck, stats }
+      })
+    )
+
+    return c.json({ decks: decksWithStats })
+  } catch (error) {
+    return c.json({ error: 'Failed to fetch decks', message: (error as Error).message }, 500)
+  }
+})
+
+app.get('/api/decks/:id', async (c) => {
+  try {
+    const userDid = await getDidFromHeader(c)
+    const db = createDb(c.env.DB)
+    const deck = await DeckModel.getDeckById(db, c.req.param('id'))
+
+    if (!deck || deck.userDid !== userDid) {
+      return c.json({ error: 'Deck not found' }, 404)
+    }
+
+    const stats = await StatsModel.getDeckStats(db, deck.id)
+    const matchHistory = await MatchModel.getMatchesByUser(db, userDid, { deckId: deck.id, limit: 20 })
+
+    return c.json({ deck: { ...deck, stats }, matches: matchHistory })
+  } catch (error) {
+    return c.json({ error: 'Failed to fetch deck', message: (error as Error).message }, 500)
+  }
+})
+
+app.put('/api/decks/:id', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { profileJwt, ...updates } = body
+
+    if (!profileJwt) return c.json({ error: 'Missing profileJwt' }, 400)
+
+    const payload = await decodeAndVerifyJWT(profileJwt)
+    const db = createDb(c.env.DB)
+    const deck = await DeckModel.getDeckById(db, c.req.param('id'))
+
+    if (!deck || deck.userDid !== payload.iss) {
+      return c.json({ error: 'Deck not found' }, 404)
+    }
+
+    const updated = await DeckModel.updateDeck(db, deck.id, updates)
+    return c.json(updated)
+  } catch (error) {
+    return c.json({ error: 'Failed to update deck', message: (error as Error).message }, 500)
+  }
+})
+
+app.delete('/api/decks/:id', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { profileJwt } = body
+
+    if (!profileJwt) return c.json({ error: 'Missing profileJwt' }, 400)
+
+    const payload = await decodeAndVerifyJWT(profileJwt)
+    const db = createDb(c.env.DB)
+    const deck = await DeckModel.getDeckById(db, c.req.param('id'))
+
+    if (!deck || deck.userDid !== payload.iss) {
+      return c.json({ error: 'Deck not found' }, 404)
+    }
+
+    await DeckModel.deleteDeck(db, deck.id)
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: 'Failed to delete deck', message: (error as Error).message }, 500)
+  }
+})
+
+// ─── Match Endpoints ───────────────────────────────────────────────
+
+app.post('/api/matches', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { profileJwt, playerCount, placements } = body
+
+    if (!profileJwt) return c.json({ error: 'Missing profileJwt' }, 400)
+    if (!playerCount || !placements || !Array.isArray(placements)) {
+      return c.json({ error: 'Missing playerCount or placements' }, 400)
+    }
+
+    const payload = await decodeAndVerifyJWT(profileJwt)
+    const db = createDb(c.env.DB)
+
+    const match = await MatchModel.createMatchWithPlacements(db, {
+      createdByDid: payload.iss,
+      playerCount,
+      placements,
+    })
+
+    await notifyDO(c, 'match-logged', match)
+
+    return c.json(match)
+  } catch (error) {
+    console.error('Create match error:', error)
+    return c.json({ error: 'Failed to create match', message: (error as Error).message }, 500)
+  }
+})
+
+app.get('/api/matches', async (c) => {
+  try {
+    const userDid = await getDidFromHeader(c)
+    const db = createDb(c.env.DB)
+    const deckId = c.req.query('deckId')
+    const limit = parseInt(c.req.query('limit') ?? '50')
+    const offset = parseInt(c.req.query('offset') ?? '0')
+
+    const matchHistory = await MatchModel.getMatchesByUser(db, userDid, { deckId, limit, offset })
+    return c.json({ matches: matchHistory })
+  } catch (error) {
+    return c.json({ error: 'Failed to fetch matches', message: (error as Error).message }, 500)
+  }
+})
+
+app.delete('/api/matches/:id', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { profileJwt } = body
+
+    if (!profileJwt) return c.json({ error: 'Missing profileJwt' }, 400)
+
+    await decodeAndVerifyJWT(profileJwt)
+    const db = createDb(c.env.DB)
+    await MatchModel.deleteMatch(db, c.req.param('id'))
+
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: 'Failed to delete match', message: (error as Error).message }, 500)
+  }
+})
+
+// ─── Stats Endpoint ────────────────────────────────────────────────
+
+app.get('/api/stats', async (c) => {
+  try {
+    const userDid = await getDidFromHeader(c)
+    const db = createDb(c.env.DB)
+    const stats = await StatsModel.getOverallStats(db, userDid)
+    return c.json(stats)
+  } catch (error) {
+    return c.json({ error: 'Failed to fetch stats', message: (error as Error).message }, 500)
+  }
+})
 
 /**
  * GET /api/ws - WebSocket endpoint for real-time updates
